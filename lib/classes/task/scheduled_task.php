@@ -67,6 +67,9 @@ abstract class scheduled_task extends task_base {
     /** @var boolean $customised - Has this task been changed from it's default schedule? */
     private $customised = false;
 
+    /** @var boolean $overridden - Does the task have values set VIA config? */
+    private $overridden = false;
+
     /** @var int $disabled - Is this task disabled in cron? */
     private $disabled = false;
 
@@ -100,6 +103,22 @@ abstract class scheduled_task extends task_base {
      */
     public function set_customised($customised) {
         $this->customised = $customised;
+    }
+
+    /**
+     * Does this task have an override in config?
+     * @return bool
+     */
+    public function is_overridden() {
+        return $this->overridden;
+    }
+
+    /**
+     * Set the overridden value.
+     * @param bool
+     */
+    public function set_overridden($overridden) {
+        $this->overridden = $overridden;
     }
 
     /**

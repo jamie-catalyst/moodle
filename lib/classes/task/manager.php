@@ -328,6 +328,10 @@ class manager {
         }
         /** @var \core\task\scheduled_task $task */
         $task = new $classname;
+
+        // Update values with those defined in the config, if any are set.
+        self::load_scheduled_task_overrides($record);
+
         if (isset($record->lastruntime)) {
             $task->set_last_run_time($record->lastruntime);
         }
@@ -362,6 +366,7 @@ class manager {
         if (isset($record->disabled)) {
             $task->set_disabled($record->disabled);
         }
+        $task->set_overridden(self::scheduled_task_has_override($classname));
 
         return $task;
     }
@@ -572,10 +577,12 @@ class manager {
                     }
                 }
 
-                // Make sure the task data is unchanged.
-                if (!$DB->record_exists('task_scheduled', (array) $record)) {
-                    $lock->release();
-                    continue;
+                if (!self::scheduled_task_has_override($record->classname)) {
+                    // Make sure the task data is unchanged unless an override is being used.
+                    if (!$DB->record_exists('task_scheduled', (array)$record)) {
+                        $lock->release();
+                        continue;
+                    }
                 }
 
                 // The global cron lock is under the most contention so request it
@@ -784,5 +791,55 @@ class manager {
             $classname = '\\' . $classname;
         }
         return $classname;
+    }
+
+    /**
+     * Updates the passed in record with values that have been defined in config.php.
+     *
+     * The format of the config value is:
+     *      $CFG->scheduled_tasks = array(
+     *          '$classname' => array(
+     *              'schedule' => '* * * * *',
+     *              'disabled' => 1,
+     *          ),
+     *      );
+     *
+     * Where $classname is the value of the task's classname, i.e. '\core\task\grade_cron_task'.
+     *
+     * @param \stdClass $record
+     */
+    private static function load_scheduled_task_overrides($record) {
+        global $CFG;
+
+        $classname = self::get_canonical_class_name($record->classname);
+
+        if (self::scheduled_task_has_override($classname)) {
+            $taskconfig = $CFG->scheduled_tasks[$classname];
+
+            if (isset($taskconfig['disabled'])) {
+                $record->disabled = $taskconfig['disabled'];
+            }
+            if (isset($taskconfig['schedule'])) {
+                list (
+                    $record->minute,
+                    $record->hour,
+                    $record->day,
+                    $record->month,
+                    $record->dayofweek) = explode(' ', $taskconfig['schedule']);
+            }
+        }
+
+    }
+
+    /**
+     * This checks whether or not there is a value set in config
+     * for a scheduled task.
+     *
+     * @param string $classname Scheduled task's classname
+     * @return bool true if there is an entry in config
+     */
+    public static function scheduled_task_has_override($classname) {
+        global $CFG;
+        return isset($CFG->scheduled_tasks[$classname]);
     }
 }
