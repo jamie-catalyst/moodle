@@ -811,10 +811,10 @@ class manager {
     private static function load_scheduled_task_overrides($record) {
         global $CFG;
 
-        $classname = self::get_canonical_class_name($record->classname);
+        $scheduledtaskkey = self::scheduled_task_get_override_key($record->classname);
 
-        if (self::scheduled_task_has_override($classname)) {
-            $taskconfig = $CFG->scheduled_tasks[$classname];
+        if ($scheduledtaskkey) {
+            $taskconfig = $CFG->scheduled_tasks[$scheduledtaskkey];
 
             if (isset($taskconfig['disabled'])) {
                 $record->disabled = $taskconfig['disabled'];
@@ -824,8 +824,8 @@ class manager {
                     $record->minute,
                     $record->hour,
                     $record->day,
-                    $record->month,
-                    $record->dayofweek) = explode(' ', $taskconfig['schedule']);
+                    $record->dayofweek,
+                    $record->month) = explode(' ', $taskconfig['schedule']);
             }
         }
 
@@ -839,7 +839,40 @@ class manager {
      * @return bool true if there is an entry in config
      */
     public static function scheduled_task_has_override($classname) {
+        return self::scheduled_task_get_override_key($classname) !== false;
+    }
+
+    /**
+     * Get the key within the scheduled tasks config object that
+     * for a classname.
+     *
+     * @param $classname the scheduled task classname to find
+     * @return false|string the key if found, otherwise false
+     */
+    public static function scheduled_task_get_override_key($classname) {
         global $CFG;
-        return isset($CFG->scheduled_tasks[$classname]);
+
+        if (isset($CFG->scheduled_tasks)) {
+            // Firstly, attempt to get a match against the full classname.
+            if (isset($CFG->scheduled_tasks[$classname])) {
+                return $classname;
+            }
+
+            // Check to see if there is a wildcard matching the classname.
+            foreach (array_keys($CFG->scheduled_tasks) as $key) {
+                $wildcardpos = strpos($key, '*');
+                if ($wildcardpos === false) {
+                    continue;
+                }
+
+                $searchstr = substr($key, 0, $wildcardpos);
+
+                if (strpos($classname, $searchstr) !== false) {
+                    return $key;
+                }
+            }
+        }
+
+        return false;
     }
 }
