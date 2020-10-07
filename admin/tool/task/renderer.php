@@ -100,8 +100,13 @@ class tool_task_renderer extends plugin_renderer_base {
                 ));
             }
 
-            $namecell = new html_table_cell($task->get_name() . "\n" .
-                    html_writer::span('\\' . $classname, 'task-class text-ltr'));
+            $namecellcontent = $task->get_name() . "\n" .
+                html_writer::span('\\' . $classname, 'task-class text-ltr');
+            if ($task->is_overridden()) {
+                // Let the user know the scheduled task is defined in config.
+                $namecellcontent .= "\n" . html_writer::div(get_string('configoverride', 'admin'), 'alert-info');
+            }
+            $namecell = new html_table_cell($namecellcontent);
             $namecell->header = true;
 
             $plugininfo = core_plugin_manager::instance()->get_plugin_info($task->get_component());

@@ -332,6 +332,10 @@ class manager {
         }
         /** @var \core\task\scheduled_task $task */
         $task = new $classname;
+
+        // Update values with those defined in the config, if any are set.
+        self::load_scheduled_task_overrides($record);
+
         if (isset($record->lastruntime)) {
             $task->set_last_run_time($record->lastruntime);
         }
@@ -366,6 +370,7 @@ class manager {
         if (isset($record->disabled)) {
             $task->set_disabled($record->disabled);
         }
+        $task->set_overridden(self::scheduled_task_has_override($classname));
 
         return $task;
     }
@@ -676,10 +681,12 @@ class manager {
                     }
                 }
 
-                // Make sure the task data is unchanged.
-                if (!$DB->record_exists('task_scheduled', (array) $record)) {
-                    $lock->release();
-                    continue;
+                if (!self::scheduled_task_has_override($record->classname)) {
+                    // Make sure the task data is unchanged unless an override is being used.
+                    if (!$DB->record_exists('task_scheduled', (array)$record)) {
+                        $lock->release();
+                        continue;
+                    }
                 }
 
                 // The global cron lock is under the most contention so request it
@@ -968,5 +975,88 @@ class manager {
         }
 
         return true;
+    }
+
+    /**
+     * Updates the passed in record with values that have been defined in config.php.
+     *
+     * The format of the config value is:
+     *      $CFG->scheduled_tasks = array(
+     *          '$classname' => array(
+     *              'schedule' => '* * * * *',
+     *              'disabled' => 1,
+     *          ),
+     *      );
+     *
+     * Where $classname is the value of the task's classname, i.e. '\core\task\grade_cron_task'.
+     *
+     * @param \stdClass $record
+     */
+    private static function load_scheduled_task_overrides($record) {
+        global $CFG;
+
+        $scheduledtaskkey = self::scheduled_task_get_override_key($record->classname);
+
+        if ($scheduledtaskkey) {
+            $taskconfig = $CFG->scheduled_tasks[$scheduledtaskkey];
+
+            if (isset($taskconfig['disabled'])) {
+                $record->disabled = $taskconfig['disabled'];
+            }
+            if (isset($taskconfig['schedule'])) {
+                list (
+                    $record->minute,
+                    $record->hour,
+                    $record->day,
+                    $record->dayofweek,
+                    $record->month) = explode(' ', $taskconfig['schedule']);
+            }
+        }
+
+    }
+
+    /**
+     * This checks whether or not there is a value set in config
+     * for a scheduled task.
+     *
+     * @param string $classname Scheduled task's classname
+     * @return bool true if there is an entry in config
+     */
+    public static function scheduled_task_has_override($classname) {
+        return self::scheduled_task_get_override_key($classname) !== false;
+    }
+
+    /**
+     * Get the key within the scheduled tasks config object that
+     * for a classname.
+     *
+     * @param $classname the scheduled task classname to find
+     * @return false|string the key if found, otherwise false
+     */
+    public static function scheduled_task_get_override_key($classname) {
+        global $CFG;
+
+        if (isset($CFG->scheduled_tasks)) {
+            // Firstly, attempt to get a match against the full classname.
+            if (isset($CFG->scheduled_tasks[$classname])) {
+                return $classname;
+            }
+
+            // Check to see if there is a wildcard matching the classname.
+            foreach (array_keys($CFG->scheduled_tasks) as $key) {
+                $wildcardpos = strpos($key, '*');
+                if ($wildcardpos === false) {
+                    continue;
+                }
+
+                $searchstr = substr($key, 0, $wildcardpos);
+
+                if (strpos($classname, $searchstr) !== false) {
+                    return $key;
+                }
+            }
+        }
+
+        return false;
     }
 }
